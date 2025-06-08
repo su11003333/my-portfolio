@@ -1,117 +1,34 @@
-// app/page.tsx
+// src/app/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Github, Linkedin, Mail, ExternalLink, Download, User, Briefcase, Code, MessageCircle } from 'lucide-react';
-import { db } from './lib/firebase';
-import { collection, getDocs, addDoc } from 'firebase/firestore';
-
-interface Project {
-  id: string;
-  title: string;
-  description: string;
-  technologies: string[];
-  githubUrl?: string;
-  liveUrl?: string;
-  imageUrl?: string;
-}
-
-interface Experience {
-  id: string;
-  company: string;
-  position: string;
-  duration: string;
-  description: string;
-}
+import { useProjects, useExperiences, useContacts } from './lib/hooks';
 
 export default function HomePage() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [experiences, setExperiences] = useState<Experience[]>([]);
+  const { projects, loading: projectsLoading } = useProjects();
+  const { experiences, loading: experiencesLoading } = useExperiences();
+  const { addContact } = useContacts();
+  
   const [contactForm, setContactForm] = useState({ name: '', email: '', message: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSection, setActiveSection] = useState('home');
-
-  // 載入資料
-  useEffect(() => {
-    loadProjects();
-    loadExperiences();
-  }, []);
-
-  const loadProjects = async () => {
-    try {
-      const querySnapshot = await getDocs(collection(db, 'projects'));
-      const projectsData = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Project[];
-      setProjects(projectsData);
-    } catch (error) {
-      console.log('載入項目時出錯:', error);
-      // 如果 Firebase 連接失敗，使用示例資料
-      setProjects([
-        {
-          id: '1',
-          title: '電商網站',
-          description: '使用 React 和 Node.js 開發的全棧電商平台',
-          technologies: ['React', 'Node.js', 'MongoDB', 'Express'],
-          githubUrl: 'https://github.com/example/ecommerce',
-          liveUrl: 'https://example-ecommerce.com'
-        },
-        {
-          id: '2',
-          title: '任務管理應用',
-          description: '具有即時協作功能的任務管理工具',
-          technologies: ['Next.js', 'Firebase', 'Tailwind CSS'],
-          githubUrl: 'https://github.com/example/task-manager'
-        }
-      ]);
-    }
-  };
-
-  const loadExperiences = async () => {
-    try {
-      const querySnapshot = await getDocs(collection(db, 'experiences'));
-      const experiencesData = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Experience[];
-      setExperiences(experiencesData);
-    } catch (error) {
-      console.log('載入經歷時出錯:', error);
-      // 示例資料
-      setExperiences([
-        {
-          id: '1',
-          company: '科技公司 A',
-          position: '前端工程師',
-          duration: '2023 - 現在',
-          description: '負責開發和維護公司的主要產品，使用 React 和 TypeScript'
-        },
-        {
-          id: '2',
-          company: '新創公司 B',
-          position: '全端工程師',
-          duration: '2022 - 2023',
-          description: '參與產品從零到一的開發過程，涵蓋前後端和資料庫設計'
-        }
-      ]);
-    }
-  };
 
   const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     
     try {
-      await addDoc(collection(db, 'contacts'), {
-        ...contactForm,
-        timestamp: new Date()
-      });
-      alert('訊息已發送成功！');
-      setContactForm({ name: '', email: '', message: '' });
+      const { error } = await addContact(contactForm);
+      if (error) {
+        alert('發送失敗：' + error);
+      } else {
+        alert('訊息已發送成功！');
+        setContactForm({ name: '', email: '', message: '' });
+      }
     } catch (error) {
-      console.log('發送訊息時出錯:', error);
+      console.error('發送訊息時出錯:', error);
       alert('發送失敗，請稍後再試');
     } finally {
       setIsSubmitting(false);
@@ -122,6 +39,15 @@ export default function HomePage() {
     setActiveSection(sectionId);
     document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  // 如果資料正在載入中，顯示載入畫面
+  if (projectsLoading && experiencesLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
+        <div className="text-white text-xl">載入中...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
@@ -232,7 +158,7 @@ export default function HomePage() {
             <div className="grid md:grid-cols-3 gap-8">
               {[
                 { title: '前端開發', desc: 'React, Next.js, TypeScript, Tailwind CSS', icon: Code },
-                { title: '後端開發', desc: 'Node.js, Express, Firebase, MongoDB', icon: Briefcase },
+                { title: '後端開發', desc: 'Node.js, Express, Supabase, PostgreSQL', icon: Briefcase },
                 { title: '其他技能', desc: 'Git, Docker, AWS, UI/UX 設計', icon: User }
               ].map((skill, index) => (
                 <motion.div
@@ -268,25 +194,31 @@ export default function HomePage() {
             </motion.div>
 
             <div className="space-y-8">
-              {experiences.map((exp, index) => (
-                <motion.div
-                  key={exp.id}
-                  initial={{ opacity: 0, x: -30 }}
-                  whileInView={{ opacity: 1, x: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: index * 0.2 }}
-                  className="bg-white/5 backdrop-blur-sm rounded-lg p-6 border border-white/10"
-                >
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
-                    <div>
-                      <h3 className="text-xl font-semibold text-white">{exp.position}</h3>
-                      <p className="text-purple-400">{exp.company}</p>
+              {experiencesLoading ? (
+                <div className="text-center text-gray-400">載入經歷中...</div>
+              ) : experiences.length === 0 ? (
+                <div className="text-center text-gray-400">暫無工作經歷</div>
+              ) : (
+                experiences.map((exp, index) => (
+                  <motion.div
+                    key={exp.id}
+                    initial={{ opacity: 0, x: -30 }}
+                    whileInView={{ opacity: 1, x: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: index * 0.2 }}
+                    className="bg-white/5 backdrop-blur-sm rounded-lg p-6 border border-white/10"
+                  >
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
+                      <div>
+                        <h3 className="text-xl font-semibold text-white">{exp.position}</h3>
+                        <p className="text-purple-400">{exp.company}</p>
+                      </div>
+                      <span className="text-gray-400 text-sm">{exp.duration}</span>
                     </div>
-                    <span className="text-gray-400 text-sm">{exp.duration}</span>
-                  </div>
-                  <p className="text-gray-300">{exp.description}</p>
-                </motion.div>
-              ))}
+                    <p className="text-gray-300">{exp.description}</p>
+                  </motion.div>
+                ))
+              )}
             </div>
           </div>
         </section>
@@ -307,53 +239,59 @@ export default function HomePage() {
             </motion.div>
 
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {projects.map((project, index) => (
-                <motion.div
-                  key={project.id}
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: index * 0.2 }}
-                  className="bg-white/5 backdrop-blur-sm rounded-lg overflow-hidden border border-white/10 hover:border-purple-400/50 transition-all"
-                >
-                  {project.imageUrl && (
-                    <img src={project.imageUrl} alt={project.title} className="w-full h-48 object-cover" />
-                  )}
-                  <div className="p-6">
-                    <h3 className="text-xl font-semibold text-white mb-3">{project.title}</h3>
-                    <p className="text-gray-300 mb-4">{project.description}</p>
-                    <div className="flex flex-wrap gap-2 mb-4">
-                      {project.technologies.map((tech) => (
-                        <span key={tech} className="bg-purple-500/20 text-purple-300 px-2 py-1 rounded text-sm">
-                          {tech}
-                        </span>
-                      ))}
+              {projectsLoading ? (
+                <div className="col-span-full text-center text-gray-400">載入作品中...</div>
+              ) : projects.length === 0 ? (
+                <div className="col-span-full text-center text-gray-400">暫無作品展示</div>
+              ) : (
+                projects.map((project, index) => (
+                  <motion.div
+                    key={project.id}
+                    initial={{ opacity: 0, y: 30 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: index * 0.2 }}
+                    className="bg-white/5 backdrop-blur-sm rounded-lg overflow-hidden border border-white/10 hover:border-purple-400/50 transition-all"
+                  >
+                    {project.image_url && (
+                      <img src={project.image_url} alt={project.title} className="w-full h-48 object-cover" />
+                    )}
+                    <div className="p-6">
+                      <h3 className="text-xl font-semibold text-white mb-3">{project.title}</h3>
+                      <p className="text-gray-300 mb-4">{project.description}</p>
+                      <div className="flex flex-wrap gap-2 mb-4">
+                        {project.technologies.map((tech) => (
+                          <span key={tech} className="bg-purple-500/20 text-purple-300 px-2 py-1 rounded text-sm">
+                            {tech}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="flex space-x-4">
+                        {project.github_url && (
+                          <a
+                            href={project.github_url}
+                            className="text-gray-400 hover:text-white transition-colors"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <Github size={20} />
+                          </a>
+                        )}
+                        {project.live_url && (
+                          <a
+                            href={project.live_url}
+                            className="text-gray-400 hover:text-white transition-colors"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <ExternalLink size={20} />
+                          </a>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex space-x-4">
-                      {project.githubUrl && (
-                        <a
-                          href={project.githubUrl}
-                          className="text-gray-400 hover:text-white transition-colors"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          <Github size={20} />
-                        </a>
-                      )}
-                      {project.liveUrl && (
-                        <a
-                          href={project.liveUrl}
-                          className="text-gray-400 hover:text-white transition-colors"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          <ExternalLink size={20} />
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
+                  </motion.div>
+                ))
+              )}
             </div>
           </div>
         </section>
